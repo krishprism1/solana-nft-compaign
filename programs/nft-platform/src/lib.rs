@@ -1,0 +1,217 @@
+use anchor_lang::prelude::*;
+use anchor_spl::token::{self, Token, TokenAccount, Mint, Transfer, MintTo};
+use anchor_spl::metadata::{self, MetadataAccount, CreateMetadataAccountsV3, DataV2};
+
+use crate::{constant::*, error::*};
+
+declare_id!("6Py5RKvhAAbqWcHjavqkNdtMaMm6TDLGovDEynNzFPX9");
+
+#[program]
+pub mod nft_platform {
+    use super::*;
+
+    pub fn initialize_counter(ctx: Context<InitializeCounter>) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        counter.count = 0;
+        Ok(())
+    }
+
+    pub fn initialize_time(ctx: Context<InitializeTime>, bump: u8) -> Result<()> {
+        let clock = Clock::get()?;
+        let current_timestamp = clock.unix_timestamp;
+
+        let time_account = &mut ctx.accounts.time_account;
+        time_account.buy_start_time = current_timestamp;
+        time_account.reveal_start_time = current_timestamp + 60 * 24 * 60 * 60; // 60 days
+        time_account.claim_start_time = time_account.reveal_start_time + 120 * 24 * 60 * 60; // 120 days
+        time_account.end_time = time_account.claim_start_time + 240 * 24 * 60 * 60; // 240 days
+        time_account.bump = bump;
+
+        Ok(())
+    }
+
+    pub fn purchase(ctx: Context<Purchase>, buy_number: u8) -> Result<()> {
+        let total_usdc = buy_number as u64 * NFT_PRICE;
+
+        let user_balance = ctx.accounts.user_usdc_account.amount;
+        if user_balance < total_usdc {
+            return Err(ErrorCode::InsufficientFunds.into());
+        }
+
+        let amount_to_address1 = total_usdc * 75 / 100;
+        let amount_to_address2 = total_usdc - amount_to_address1;
+
+        // Transfer to the first address
+        let cpi_accounts_1 = Transfer {
+            from: ctx.accounts.user_usdc_account.to_account_info(),
+            to: ctx.accounts.purchase1_usdc_account.to_account_info(),
+            authority: ctx.accounts.buyer.to_account_info(),
+        };
+        token::transfer(CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_1), amount_to_address1)?;
+
+        // Transfer to the second address
+        let cpi_accounts_2 = Transfer {
+            from: ctx.accounts.user_usdc_account.to_account_info(),
+            to: ctx.accounts.purchase2_usdc_account.to_account_info(),
+            authority: ctx.accounts.buyer.to_account_info(),
+        };
+        token::transfer(CpiContext::new(ctx.accounts.token_program.to_account_info(), cpi_accounts_2), amount_to_address2)?;
+
+        Ok(())
+    }
+
+    pub fn mint_nft(ctx: Context<NFTMint>, nft_name: String, nft_symbol: String, nft_uri: String) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        let time_account = &mut ctx.accounts.time_account;
+
+        let clock = Clock::get()?;
+        let current_timestamp = clock.unix_timestamp;
+        if time_account.buy_start_time > current_timestamp || current_timestamp > time_account.reveal_start_time {
+            return Err(ErrorCode::BuyPeriodExceed.into());
+        }
+
+        if counter.count >= 8888 {
+            return Err(ErrorCode::MintAmountExceed.into());
+        }
+
+        counter.count += 1;
+
+        let unique_name = format!("{} NFT #{}", nft_name, counter.count);
+
+        token::mint_to(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                MintTo {
+                    mint: ctx.accounts.mint_account.to_account_info(),
+                    to: ctx.accounts.associated_token_account.to_account_info(),
+                    authority: ctx.accounts.payer.to_account_info(),
+                },
+            ),
+            1,
+        )?;
+
+        metadata::create_metadata_accounts_v3(
+            CpiContext::new(
+                ctx.accounts.token_metadata_program.to_account_info(),
+                CreateMetadataAccountsV3 {
+                    metadata: ctx.accounts.metadata_account.to_account_info(),
+                    mint: ctx.accounts.mint_account.to_account_info(),
+                    mint_authority: ctx.accounts.payer.to_account_info(),
+                    update_authority: ctx.accounts.payer.to_account_info(),
+                    payer: ctx.accounts.payer.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                    rent: ctx.accounts.rent.to_account_info(),
+                },
+            ),
+            DataV2 {
+                name: unique_name,
+                symbol: nft_symbol,
+                uri: nft_uri,
+                seller_fee_basis_points: 0,
+                creators: None,
+                collection: None,
+                uses: None,
+            },
+            false,
+            true,
+            None,
+        )?;
+
+        Ok(())
+    }
+
+    pub fn reveal(ctx: Context<Reveal>, random_number: u16) -> Result<()> {
+        let nft_random_number = &mut ctx.accounts.nft_random_number;
+        let time_account = &mut ctx.accounts.time_account;
+
+        let clock = Clock::get()?;
+        let current_timestamp = clock.unix_timestamp;
+        if time_account.reveal_start_time > current_timestamp || current_timestamp > time_account.claim_start_time {
+            return Err(ErrorCode::RevealPeriodExceed.into());
+        }
+
+        nft_random_number.is_purchase = true;
+        nft_random_number.random_number = random_number;
+        Ok(())
+    }
+}
+
+// Define data structures
+#[account]
+pub struct Counter {
+    pub count: u64,
+}
+
+#[account]
+pub struct TimeAccount {
+    pub buy_start_time: i64,
+    pub reveal_start_time: i64,
+    pub claim_start_time: i64,
+    pub end_time: i64,
+    pub bump: u8,
+}
+
+#[account]
+pub struct NFTRandomNumber {
+    pub is_purchase: bool,
+    pub random_number: u16,
+}
+
+// Define context structs
+#[derive(Accounts)]
+pub struct InitializeCounter<'info> {
+    #[account(init, payer = user, space = 8 + 8)]
+    pub counter: Account<'info, Counter>,
+    #[account(mut)]
+    pub user: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct InitializeTime<'info> {
+    #[account(init, payer = payer, space = 8 + 40)]
+    pub time_account: Account<'info, TimeAccount>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Purchase<'info> {
+    #[account(mut)]
+    pub user_usdc_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub purchase1_usdc_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub purchase2_usdc_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub buyer: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct NFTMint<'info> {
+    #[account(mut)]
+    pub counter: Account<'info, Counter>,
+    #[account(mut)]
+    pub time_account: Account<'info, TimeAccount>,
+    #[account(mut)]
+    pub mint_account: Account<'info, Mint>,
+    #[account(mut)]
+    pub associated_token_account: Account<'info, TokenAccount>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+    pub token_metadata_program: Program<'info, MetadataAccount>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
+#[derive(Accounts)]
+pub struct Reveal<'info> {
+    #[account(mut)]
+    pub nft_random_number: Account<'info, NFTRandomNumber>,
+    #[account(mut)]
+    pub time_account: Account<'info, TimeAccount>,
+    pub system_program: Program<'info, System>,
+}
