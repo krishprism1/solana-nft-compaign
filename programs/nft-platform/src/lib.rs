@@ -108,17 +108,19 @@ pub mod nft_platform {
         msg!("Initializing purchase6");
 
         // Mint NFT to the user's token account
-        // let cpi_accounts = MintTo {
-        //     mint: ctx.accounts.mint.to_account_info(),
-        //     to: ctx.accounts.mint_account.to_account_info(),
-        //     authority: ctx.accounts.payer.to_account_info(),
-        // };
-        // let cpi_program = ctx.accounts.token_program.to_account_info();
-        // token::mint_to(
-        //     CpiContext::new(cpi_program, cpi_accounts),
-        //     1, // Mint 1 NFT
-        // )?;
-
+        let cpi_accounts = MintTo {
+            mint: ctx.accounts.mint_account.to_account_info(),
+            to: ctx.accounts.associated_token_account.to_account_info(),
+            authority: ctx.accounts.payer.to_account_info(),
+        };
+        msg!("Initializing purchase7");
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        msg!("Initializing purchase8");
+        token::mint_to(
+            CpiContext::new(cpi_program, cpi_accounts),
+            1, // Mint 1 NFT
+        )?;
+        msg!("Initializing purchase9");
         // metadata::create_metadata_accounts_v3(
         //     CpiContext::new(
         //         ctx.accounts.token_metadata_program.to_account_info(),
@@ -254,8 +256,10 @@ pub struct Purchase<'info> {
     // pub user_state: Account<'info, UserState>,
     // #[account(init, payer = payer, mint::decimals = 0, mint::authority = payer)]
     // pub mint: Account<'info, Mint>,
-    // #[account(mut)]
-    // pub mint_account: Account<'info, Mint>,   
+    #[account(mut)]
+    pub mint_account: UncheckedAccount<'info>,
+    #[account(mut)]
+    pub associated_token_account: UncheckedAccount<'info>,
     #[account(mut)]
     pub payer_token_account: Account<'info, TokenAccount>, 
     #[account(mut)]
