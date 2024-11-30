@@ -1,22 +1,14 @@
 use anchor_lang::prelude::*;
-use anchor_spl::metadata::{self, Metadata, MetadataAccount, CreateMetadataAccountsV3};
-use mpl_token_metadata::types::DataV2;
+use anchor_spl::token_interface::{self, Mint, MintTo, TokenAccount, TokenInterface};
+use anchor_lang::solana_program::clock::Clock;
+use anchor_spl::associated_token::AssociatedToken;
 
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{self, Token, TokenAccount, Transfer, Mint, MintTo},
-};
-
-
-pub mod constant;
-pub mod error;
-use crate::error::ErrorCode;
-use crate::constant::*;
-
-declare_id!("7ond1Kt7DFPa45wxPwFiLC2qDXUryrMX6igfBofJXW6y");
+// This is your program's public key and it will update
+// automatically when you build the project.
+declare_id!("3vQXZ7xV4X8K86y97WPi1Td74CJZiFkv7qrFPuYU9yes");
 
 #[program]
-pub mod nft_platform {
+pub mod TokenVesting {
     use super::*;
 
     pub fn initialize(
@@ -71,92 +63,56 @@ pub mod nft_platform {
     }
 
     pub fn purchase(ctx: Context<Purchase>) -> Result<()> {
-        msg!("Initializing purchase");
         let global_state = &mut ctx.accounts.global_state;
-        msg!("Initializing purchase1");
-
-        // let user_state = &mut ctx.accounts.user_state;
-        msg!("Initializing purchase2");
+        let user_state = &mut ctx.accounts.user_state;
     
         let current_time = Clock::get()?.unix_timestamp;
-        // require!(
-        //     current_time >= global_state.purchase_start && current_time <= global_state.purchase_end,
-        //     ErrorCode::NotInPurchasePeriod
-        // );
-        msg!("Initializing purchase3");
+        require!(
+            current_time >= global_state.purchase_start && current_time <= global_state.purchase_end,
+            ErrorCode::NotInPurchasePeriod
+        );
     
         require!(
             global_state.total_nfts_minted < global_state.max_nfts,
             ErrorCode::NftLimitReached
         );
-        msg!("Initializing purchase4");
     
         // Transfer SPL tokens from the payer to the admin
-        let nft_price = 1000; //global_state.nft_price_lamports; // Update this variable name if using SPL token price
+        let nft_price = global_state.nft_price_lamports; // Update this variable name if using SPL token price
         let cpi_accounts = Transfer {
             from: ctx.accounts.payer_token_account.to_account_info(),
             to: ctx.accounts.admin_token_account.to_account_info(),
             authority: ctx.accounts.payer.to_account_info(),
         };
         let cpi_program = ctx.accounts.token_program.to_account_info();
-        msg!("Initializing purchase5");
-
         token::transfer(
             CpiContext::new(cpi_program, cpi_accounts),
             nft_price,
         )?;
-        msg!("Initializing purchase6");
-
-        // Mint NFT to the user's token account
-        // let cpi_accounts = MintTo {
-        //     mint: ctx.accounts.mint.to_account_info(),
-        //     to: ctx.accounts.mint_account.to_account_info(),
-        //     authority: ctx.accounts.payer.to_account_info(),
-        // };
-        // let cpi_program = ctx.accounts.token_program.to_account_info();
-        // token::mint_to(
-        //     CpiContext::new(cpi_program, cpi_accounts),
-        //     1, // Mint 1 NFT
-        // )?;
-
-        // metadata::create_metadata_accounts_v3(
-        //     CpiContext::new(
-        //         ctx.accounts.token_metadata_program.to_account_info(),
-        //         CreateMetadataAccountsV3 {
-        //             metadata: ctx.accounts.metadata_account.to_account_info(),
-        //             mint: ctx.accounts.mint_account.to_account_info(),
-        //             mint_authority: ctx.accounts.payer.to_account_info(),
-        //             update_authority: ctx.accounts.payer.to_account_info(),
-        //             payer: ctx.accounts.payer.to_account_info(),
-        //             system_program: ctx.accounts.system_program.to_account_info(),
-        //             rent: ctx.accounts.rent.to_account_info(),
-        //         },
-        //     ),
-        //     DataV2 {
-        //         name: "NFTOne".to_string(),
-        //         symbol: "NO".to_string(),
-        //         uri: "https://avatars.githubusercontent.com/u/65070737?v=4".to_string(),
-        //         seller_fee_basis_points: 0,
-        //         creators: None,
-        //         collection: None,
-        //         uses: None,
-        //     },
-        //     false,
-        //     true,
-        //     None,
-        // )?;
     
-        // // Record NFT in user's state
-        // user_state.nfts.push(NftInfo {
-        //     mint: ctx.accounts.mint.key(),
-        //     revealed_number: None,
-        // });
+        // Mint NFT to the user's token account
+        let cpi_accounts = MintTo {
+            mint: ctx.accounts.mint.to_account_info(),
+            to: ctx.accounts.token_account.to_account_info(),
+            authority: ctx.accounts.mint_authority.to_account_info(),
+        };
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        token::mint_to(
+            CpiContext::new(cpi_program, cpi_accounts),
+            1, // Mint 1 NFT
+        )?;
+    
+        // Record NFT in user's state
+        user_state.nfts.push(NftInfo {
+            mint: ctx.accounts.mint.key(),
+            revealed_number: None,
+        });
     
         // Increment total NFTs minted
         global_state.total_nfts_minted += 1;
     
         Ok(())
-    }    
+    }
 
     pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
         let user_state = &mut ctx.accounts.user_state;
@@ -178,7 +134,7 @@ pub mod nft_platform {
             return Err(error!(ErrorCode::NftAlreadyRevealed));
         }
 
-        let available_numbers: Vec<u8> = (1..=100)
+        let mut available_numbers: Vec<u8> = (1..=100)
             .filter(|n| !global_state.used_numbers.contains(n))
             .collect();
         if available_numbers.is_empty() {
@@ -192,12 +148,9 @@ pub mod nft_platform {
 
         Ok(())
     }
-
 }
 
-
 #[account]
-#[derive(InitSpace)]
 pub struct GlobalState {
     pub total_nfts_minted: u64,
     pub max_nfts: u64,
@@ -206,7 +159,6 @@ pub struct GlobalState {
     pub purchase_end: i64,
     pub reveal_start: i64,
     pub reveal_end: i64,
-    #[max_len(200)]
     pub used_numbers: Vec<u8>,
     pub admin: Pubkey,
 }
@@ -224,16 +176,10 @@ pub struct NftInfo {
 
 #[derive(Accounts)]
 pub struct Initialize<'info> {
+    #[account(init, payer = admin, space = 8 + 32 + 8 + 8 + 32 + 8 + 8 + 8 + 8 + 1 + 204)]
+    pub global_state: Account<'info, GlobalState>,
     #[account(mut)]
     pub admin: Signer<'info>,
-    #[account(
-        init,
-        seeds=[PREFIX],
-        bump,
-        payer = admin,
-        space = 8 + GlobalState::INIT_SPACE,
-    )]
-    pub global_state: Account<'info, GlobalState>,
     pub system_program: Program<'info, System>,
 }
 
@@ -247,26 +193,26 @@ pub struct SetPeriods<'info> {
 #[derive(Accounts)]
 pub struct Purchase<'info> {
     #[account(mut)]
-    pub payer: Signer<'info>,        
+    pub payer: Signer<'info>,
     #[account(mut)]
     pub global_state: Account<'info, GlobalState>,
-    // #[account(init, payer = payer, space = 8 + 8 + (32 + 1) * 100)]
-    // pub user_state: Account<'info, UserState>,
-    // #[account(init, payer = payer, mint::decimals = 0, mint::authority = payer)]
-    // pub mint: Account<'info, Mint>,
-    // #[account(mut)]
-    // pub mint_account: Account<'info, Mint>,   
+    #[account(init, payer = payer, space = 8 + 8 + (32 + 1) * 100)]
+    pub user_state: Account<'info, UserState>,
+    #[account(init, payer = payer, mint::decimals = 0, mint::authority = payer)]
+    pub mint: Account<'info, Mint>,
+    #[account(address = anchor_spl::associated_token::ID)]
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    #[account(init, payer = payer, associated_token::mint = mint, associated_token::authority = payer)]
+    pub token_account: Account<'info, TokenAccount>,
     #[account(mut)]
-    pub payer_token_account: Account<'info, TokenAccount>, 
+    pub payer_token_account: Account<'info, TokenAccount>, // Payer's token account
     #[account(mut)]
-    pub admin_token_account: Account<'info, TokenAccount>,
-    // pub token_metadata_program: Program<'info, Metadata>,
-    // #[account(mut)]
-    // pub metadata_account: Account<'info, MetadataAccount>,
-    pub token_program: Program<'info, Token>,    
+    pub admin_token_account: Account<'info, TokenAccount>, // Admin's token account
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
+
 
 #[derive(Accounts)]
 pub struct Reveal<'info> {
@@ -275,4 +221,22 @@ pub struct Reveal<'info> {
     #[account(mut)]
     pub global_state: Account<'info, GlobalState>,
     pub payer: Signer<'info>,
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("NFT limit reached.")]
+    NftLimitReached,
+    #[msg("Purchase period has not started or has ended.")]
+    NotInPurchasePeriod,
+    #[msg("Reveal period has not started or has ended.")]
+    NotInRevealPeriod,
+    #[msg("Invalid time periods provided.")]
+    InvalidTimePeriods,
+    #[msg("NFT not found.")]
+    NftNotFound,
+    #[msg("NFT has already been revealed.")]
+    NftAlreadyRevealed, 
+    #[msg("No available numbers to assign.")]
+    NoAvailableNumbers,
 }
