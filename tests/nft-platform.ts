@@ -35,14 +35,13 @@ describe("nft-platform", () => {
     // await program.methods
     //   .initialize(
     //     new anchor.BN(MAX_NFTS),
-    //     new anchor.BN(NFT_PRICE_LAMPORTS),
     //     new anchor.BN(PURCHASE_START),
     //     new anchor.BN(PURCHASE_END),
     //     new anchor.BN(REVEAL_START),
     //     new anchor.BN(REVEAL_END)
     //   )
     //   .accounts({
-    //     globalState: globalStatePDA,
+    //     globalState: globalStatePDA,        
     //     admin: admin.PublicKey,
     //     systemProgram: SystemProgram.programId,
     //   })
@@ -101,7 +100,6 @@ describe("nft-platform", () => {
     }
 
     const metadataAddress = await getMetadata([Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintAccount.toBuffer()])
-
     await program.methods
       .purchase()
       .accounts({

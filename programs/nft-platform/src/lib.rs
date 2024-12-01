@@ -13,7 +13,7 @@ pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("7ond1Kt7DFPa45wxPwFiLC2qDXUryrMX6igfBofJXW6y");
+declare_id!("CM4Qr3AiSgcVQpwMXEruMNVjew7HMLE8JV1LTEoCAArK");
 
 #[program]
 pub mod nft_platform {
@@ -22,7 +22,6 @@ pub mod nft_platform {
     pub fn initialize(
         ctx: Context<Initialize>,
         max_nfts: u64,
-        nft_price_lamports: u64,
         purchase_start: i64,
         purchase_end: i64,
         reveal_start: i64,
@@ -37,7 +36,6 @@ pub mod nft_platform {
 
         global_state.total_nfts_minted = 0;
         global_state.max_nfts = max_nfts;
-        global_state.nft_price_lamports = nft_price_lamports;
         global_state.purchase_start = purchase_start;
         global_state.purchase_end = purchase_end;
         global_state.reveal_start = reveal_start;
@@ -84,19 +82,39 @@ pub mod nft_platform {
             global_state.total_nfts_minted < global_state.max_nfts,
             ErrorCode::NftLimitReached
         );
+
+        let user_balance = ctx.accounts.payer_token_account.amount;
+        if user_balance < NFT_PRICE {
+            return Err(ErrorCode::InsufficientFunds.into());
+        }
     
+        let amount_to_address_one = NFT_PRICE * 75 / 100;
+        let amount_to_address_two = NFT_PRICE - amount_to_address_one;
+
         // Transfer SPL tokens from the payer to the admin
-        let nft_price = 1000; //global_state.nft_price_lamports; // Update this variable name if using SPL token price
-        let cpi_accounts = Transfer {
+        let cpi_accounts_one = Transfer {
             from: ctx.accounts.payer_token_account.to_account_info(),
             to: ctx.accounts.admin_token_account.to_account_info(),
             authority: ctx.accounts.payer.to_account_info(),
         };
-        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_program_one = ctx.accounts.token_program.to_account_info();
 
         token::transfer(
-            CpiContext::new(cpi_program, cpi_accounts),
-            nft_price,
+            CpiContext::new(cpi_program_one, cpi_accounts_one),
+            amount_to_address_two,
+        )?;
+
+        let cpi_accounts_two = Transfer {
+            from: ctx.accounts.payer_token_account.to_account_info(),
+            to: ctx.accounts.admin_token_account.to_account_info(),
+            authority: ctx.accounts.payer.to_account_info(),
+        };
+
+        let cpi_program_two = ctx.accounts.token_program.to_account_info();
+
+        token::transfer(
+            CpiContext::new(cpi_program_two, cpi_accounts_two),
+            amount_to_address_one,
         )?;
 
         // Mint NFT to the user's token account
@@ -137,12 +155,6 @@ pub mod nft_platform {
             None,
         )?;
     
-        // // Record NFT in user's state
-        // user_state.nfts.push(NftInfo {
-        //     mint: ctx.accounts.mint_account.key(),
-        //     revealed_number: None,
-        // });
-
         user_nfts.owner = *ctx.accounts.payer.key;        
         user_nfts.mint_key = ctx.accounts.mint_account.key();        
         user_nfts.revealed_number = 0;
@@ -195,7 +207,6 @@ pub mod nft_platform {
 pub struct GlobalState {
     pub total_nfts_minted: u64,
     pub max_nfts: u64,
-    pub nft_price_lamports: u64,
     pub purchase_start: i64,
     pub purchase_end: i64,
     pub reveal_start: i64,
@@ -203,6 +214,7 @@ pub struct GlobalState {
     #[max_len(200)]
     pub used_numbers: Vec<u8>,
     pub admin: Pubkey,
+
 }
 
 #[account]
@@ -265,11 +277,12 @@ pub struct Purchase<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-// #[derive(Accounts)]
-// pub struct Reveal<'info> {
-//     #[account(mut)]
-//     pub user_state: Account<'info, UserState>,
-//     #[account(mut)]
-//     pub global_state: Account<'info, GlobalState>,
-//     pub payer: Signer<'info>,
-// }
+#[derive(Accounts)]
+pub struct Reveal<'info> {
+    #[account(mut)]
+    pub user_nfts: Account<'info, UserNFTs>,  
+    #[account(mut)]
+    pub global_state: Account<'info, GlobalState>,
+    pub payer: Signer<'info>,  
+    pub mint: Account<'info, Mint>,
+}
