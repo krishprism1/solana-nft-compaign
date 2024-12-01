@@ -59,6 +59,8 @@ describe("nft-platform", () => {
       program.programId
     );
 
+    
+
     const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
     const mintKeypair: anchor.web3.Keypair = anchor.web3.Keypair.generate();
@@ -85,7 +87,10 @@ describe("nft-platform", () => {
     const vaultAccount = new PublicKey("AmQ1f82eQVJeAy8fQ8UzcYQQ79nTvTy5FssvMfSmBzP")
     const tokenAccount = new PublicKey("CWjKYqg7yucQURrCsMrdK3MpJm2H3YZAiBqY45BkB8vD");
     
-
+    const [userNfts] = await PublicKey.findProgramAddress(
+      [mintAccount.toBuffer(), admin.publicKey.toBuffer()],
+      program.programId
+    );
     
     const getMetadata = async (data) => {
       const seed = await PublicKey.findProgramAddress(
@@ -97,26 +102,26 @@ describe("nft-platform", () => {
 
     const metadataAddress = await getMetadata([Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintAccount.toBuffer()])
 
-    
     await program.methods
       .purchase()
       .accounts({
         globalState : globalStatePDA,
+        userNfts,
         payer: admin.publicKey,
         mintAccount:mintAccount,
         associatedTokenAccount: associateTokenAccount,
         payerTokenAccount: tokenAccount,
         adminTokenAccount : vaultAccount,
-        // metadataAccount: metadataAddress,
+        metadataAccount: metadataAddress,
         tokenProgram: TOKEN_PROGRAM_ID,
-        // tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: anchor.web3.SYSVAR_RENT_PUBKEY
       })
       .signers([])
       .rpc();
 
-    const userState = await program.account.userState.all();
+    const userState = await program.account.userNfTs.all();
     console.log("User State:", userState);
     const state = await program.account.globalState.all();
     console.log("Global State:", state);

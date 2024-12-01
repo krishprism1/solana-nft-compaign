@@ -71,25 +71,19 @@ pub mod nft_platform {
     }
 
     pub fn purchase(ctx: Context<Purchase>) -> Result<()> {
-        msg!("Initializing purchase");
         let global_state = &mut ctx.accounts.global_state;
-        msg!("Initializing purchase1");
-
-        // let user_state = &mut ctx.accounts.user_state;
-        msg!("Initializing purchase2");
+        let user_nfts = &mut ctx.accounts.user_nfts;
     
         let current_time = Clock::get()?.unix_timestamp;
         // require!(
         //     current_time >= global_state.purchase_start && current_time <= global_state.purchase_end,
         //     ErrorCode::NotInPurchasePeriod
         // );
-        msg!("Initializing purchase3");
     
         require!(
             global_state.total_nfts_minted < global_state.max_nfts,
             ErrorCode::NftLimitReached
         );
-        msg!("Initializing purchase4");
     
         // Transfer SPL tokens from the payer to the admin
         let nft_price = 1000; //global_state.nft_price_lamports; // Update this variable name if using SPL token price
@@ -99,13 +93,11 @@ pub mod nft_platform {
             authority: ctx.accounts.payer.to_account_info(),
         };
         let cpi_program = ctx.accounts.token_program.to_account_info();
-        msg!("Initializing purchase5");
 
         token::transfer(
             CpiContext::new(cpi_program, cpi_accounts),
             nft_price,
         )?;
-        msg!("Initializing purchase6");
 
         // Mint NFT to the user's token account
         let cpi_accounts = MintTo {
@@ -113,87 +105,87 @@ pub mod nft_platform {
             to: ctx.accounts.associated_token_account.to_account_info(),
             authority: ctx.accounts.payer.to_account_info(),
         };
-        msg!("Initializing purchase7");
         let cpi_program = ctx.accounts.token_program.to_account_info();
-        msg!("Initializing purchase8");
         token::mint_to(
             CpiContext::new(cpi_program, cpi_accounts),
             1, // Mint 1 NFT
         )?;
-        msg!("Initializing purchase9");
-        // metadata::create_metadata_accounts_v3(
-        //     CpiContext::new(
-        //         ctx.accounts.token_metadata_program.to_account_info(),
-        //         CreateMetadataAccountsV3 {
-        //             metadata: ctx.accounts.metadata_account.to_account_info(),
-        //             mint: ctx.accounts.mint_account.to_account_info(),
-        //             mint_authority: ctx.accounts.payer.to_account_info(),
-        //             update_authority: ctx.accounts.payer.to_account_info(),
-        //             payer: ctx.accounts.payer.to_account_info(),
-        //             system_program: ctx.accounts.system_program.to_account_info(),
-        //             rent: ctx.accounts.rent.to_account_info(),
-        //         },
-        //     ),
-        //     DataV2 {
-        //         name: "NFTOne".to_string(),
-        //         symbol: "NO".to_string(),
-        //         uri: "https://avatars.githubusercontent.com/u/65070737?v=4".to_string(),
-        //         seller_fee_basis_points: 0,
-        //         creators: None,
-        //         collection: None,
-        //         uses: None,
-        //     },
-        //     false,
-        //     true,
-        //     None,
-        // )?;
+        metadata::create_metadata_accounts_v3(
+            CpiContext::new(
+                ctx.accounts.token_metadata_program.to_account_info(),
+                CreateMetadataAccountsV3 {
+                    metadata: ctx.accounts.metadata_account.to_account_info(),
+                    mint: ctx.accounts.mint_account.to_account_info(),
+                    mint_authority: ctx.accounts.payer.to_account_info(),
+                    update_authority: ctx.accounts.payer.to_account_info(),
+                    payer: ctx.accounts.payer.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                    rent: ctx.accounts.rent.to_account_info(),
+                },
+            ),
+            DataV2 {
+                name: "NFTOne".to_string(),
+                symbol: "NO".to_string(),
+                uri: "https://avatars.githubusercontent.com/u/65070737?v=4".to_string(),
+                seller_fee_basis_points: 0,
+                creators: None,
+                collection: None,
+                uses: None,
+            },
+            false,
+            true,
+            None,
+        )?;
     
         // // Record NFT in user's state
         // user_state.nfts.push(NftInfo {
-        //     mint: ctx.accounts.mint.key(),
+        //     mint: ctx.accounts.mint_account.key(),
         //     revealed_number: None,
         // });
-    
-        // Increment total NFTs minted
+
+        user_nfts.owner = *ctx.accounts.payer.key;        
+        user_nfts.mint_key = ctx.accounts.mint_account.key();        
+        user_nfts.revealed_number = 0;
+        
         global_state.total_nfts_minted += 1;
     
         Ok(())
     }    
 
-    pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
-        let user_state = &mut ctx.accounts.user_state;
-        let global_state = &mut ctx.accounts.global_state;
+    // pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
+    //     let user_state = &mut ctx.accounts.user_state;
+    //     let global_state = &mut ctx.accounts.global_state;
 
-        let current_time = Clock::get()?.unix_timestamp;
-        require!(
-            current_time >= global_state.reveal_start && current_time <= global_state.reveal_end,
-            ErrorCode::NotInRevealPeriod
-        );
+    //     let current_time = Clock::get()?.unix_timestamp;
+    //     require!(
+    //         current_time >= global_state.reveal_start && current_time <= global_state.reveal_end,
+    //         ErrorCode::NotInRevealPeriod
+    //     );
 
-        let nft = user_state
-            .nfts
-            .iter_mut()
-            .find(|n| n.mint == mint)
-            .ok_or(ErrorCode::NftNotFound)?;
+    //     let nft = user_state
+    //         .nfts
+    //         .iter_mut()
+    //         .find(|n| n.mint == mint)
+    //         .ok_or(ErrorCode::NftNotFound)?;
 
-        if nft.revealed_number.is_some() {
-            return Err(error!(ErrorCode::NftAlreadyRevealed));
-        }
+    //     if nft.revealed_number.is_some() {
+    //         return Err(error!(ErrorCode::NftAlreadyRevealed));
+    //     }
 
-        let available_numbers: Vec<u8> = (1..=100)
-            .filter(|n| !global_state.used_numbers.contains(n))
-            .collect();
-        if available_numbers.is_empty() {
-            return Err(error!(ErrorCode::NoAvailableNumbers));
-        }
+    //     let available_numbers: Vec<u8> = (1..=100)
+    //         .filter(|n| !global_state.used_numbers.contains(n))
+    //         .collect();
+    //     if available_numbers.is_empty() {
+    //         return Err(error!(ErrorCode::NoAvailableNumbers));
+    //     }
 
-        // Simulating randomness with deterministic behavior for now
-        let random_number = available_numbers[0];
-        nft.revealed_number = Some(random_number);
-        global_state.used_numbers.push(random_number);
+    //     // Simulating randomness with deterministic behavior for now
+    //     let random_number = available_numbers[0];
+    //     nft.revealed_number = Some(random_number);
+    //     global_state.used_numbers.push(random_number);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
 }
 
@@ -214,14 +206,11 @@ pub struct GlobalState {
 }
 
 #[account]
-pub struct UserState {
-    pub nfts: Vec<NftInfo>,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
-pub struct NftInfo {
-    pub mint: Pubkey,
-    pub revealed_number: Option<u8>,
+#[derive(InitSpace)]
+pub struct UserNFTs  {
+    pub owner: Pubkey,           
+    pub mint_key: Pubkey,              
+    pub revealed_number: u8,   
 }
 
 #[derive(Accounts)]
@@ -252,31 +241,35 @@ pub struct Purchase<'info> {
     pub payer: Signer<'info>,        
     #[account(mut)]
     pub global_state: Account<'info, GlobalState>,
-    // #[account(init, payer = payer, space = 8 + 8 + (32 + 1) * 100)]
-    // pub user_state: Account<'info, UserState>,
-    // #[account(init, payer = payer, mint::decimals = 0, mint::authority = payer)]
-    // pub mint: Account<'info, Mint>,
     #[account(mut)]
     pub mint_account: UncheckedAccount<'info>,
+    #[account(
+        init,
+        payer = payer,
+        seeds= [mint_account.key().as_ref(), payer.key().as_ref()],
+        bump,
+        space= 8 + UserNFTs::INIT_SPACE,
+    )]
+    pub user_nfts: Account<'info, UserNFTs>,
     #[account(mut)]
     pub associated_token_account: UncheckedAccount<'info>,
     #[account(mut)]
     pub payer_token_account: Account<'info, TokenAccount>, 
     #[account(mut)]
     pub admin_token_account: Account<'info, TokenAccount>,
-    // pub token_metadata_program: Program<'info, Metadata>,
-    // #[account(mut)]
-    // pub metadata_account: Account<'info, MetadataAccount>,
+    pub token_metadata_program: Program<'info, Metadata>,
+    #[account(mut)]
+    pub metadata_account: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,    
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
 }
 
-#[derive(Accounts)]
-pub struct Reveal<'info> {
-    #[account(mut)]
-    pub user_state: Account<'info, UserState>,
-    #[account(mut)]
-    pub global_state: Account<'info, GlobalState>,
-    pub payer: Signer<'info>,
-}
+// #[derive(Accounts)]
+// pub struct Reveal<'info> {
+//     #[account(mut)]
+//     pub user_state: Account<'info, UserState>,
+//     #[account(mut)]
+//     pub global_state: Account<'info, GlobalState>,
+//     pub payer: Signer<'info>,
+// }
