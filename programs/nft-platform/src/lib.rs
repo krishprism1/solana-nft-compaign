@@ -13,7 +13,7 @@ pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("CM4Qr3AiSgcVQpwMXEruMNVjew7HMLE8JV1LTEoCAArK");
+declare_id!("AiUAGsCiAvGr2Zodt3K52qdYVLiRSBHWXqMrv9nvndB1");
 
 #[program]
 pub mod nft_platform {
@@ -164,40 +164,37 @@ pub mod nft_platform {
         Ok(())
     }    
 
-    // pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
-    //     let user_state = &mut ctx.accounts.user_state;
-    //     let global_state = &mut ctx.accounts.global_state;
+    pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
+        let user_nfts = &mut ctx.accounts.user_nfts;
+        let global_state = &mut ctx.accounts.global_state;
 
-    //     let current_time = Clock::get()?.unix_timestamp;
-    //     require!(
-    //         current_time >= global_state.reveal_start && current_time <= global_state.reveal_end,
-    //         ErrorCode::NotInRevealPeriod
-    //     );
+        let current_time = Clock::get()?.unix_timestamp;
+        // require!(
+        //     current_time >= global_state.reveal_start && current_time <= global_state.reveal_end,
+        //     ErrorCode::NotInRevealPeriod
+        // );
 
-    //     let nft = user_state
-    //         .nfts
-    //         .iter_mut()
-    //         .find(|n| n.mint == mint)
-    //         .ok_or(ErrorCode::NftNotFound)?;
+        if user_nfts.mint_key != mint {
+            return Err(ErrorCode::NftNotFound.into());
+        }
+        if user_nfts.revealed_number != 0 {
+            return Err(ErrorCode::NftAlreadyRevealed.into());
+        }
 
-    //     if nft.revealed_number.is_some() {
-    //         return Err(error!(ErrorCode::NftAlreadyRevealed));
-    //     }
+        let available_numbers: Vec<u8> = (1..=100)
+            .filter(|n| !global_state.used_numbers.contains(n))
+            .collect();
+        if available_numbers.is_empty() {
+            return Err(error!(ErrorCode::NoAvailableNumbers));
+        }
 
-    //     let available_numbers: Vec<u8> = (1..=100)
-    //         .filter(|n| !global_state.used_numbers.contains(n))
-    //         .collect();
-    //     if available_numbers.is_empty() {
-    //         return Err(error!(ErrorCode::NoAvailableNumbers));
-    //     }
+        // Simulating randomness with deterministic behavior for now
+        let random_number = available_numbers[0];
+        user_nfts.revealed_number = random_number;
+        global_state.used_numbers.push(random_number);
 
-    //     // Simulating randomness with deterministic behavior for now
-    //     let random_number = available_numbers[0];
-    //     nft.revealed_number = Some(random_number);
-    //     global_state.used_numbers.push(random_number);
-
-    //     Ok(())
-    // }
+        Ok(())
+    }
 
 }
 
@@ -285,4 +282,5 @@ pub struct Reveal<'info> {
     pub global_state: Account<'info, GlobalState>,
     pub payer: Signer<'info>,  
     pub mint: Account<'info, Mint>,
+    pub system_program: Program<'info, System>
 }
