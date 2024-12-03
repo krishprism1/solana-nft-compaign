@@ -281,6 +281,5 @@ pub struct Reveal<'info> {
     #[account(mut)]
     pub global_state: Account<'info, GlobalState>,
     pub payer: Signer<'info>,  
-    pub mint: Account<'info, Mint>,
     pub system_program: Program<'info, System>
 }

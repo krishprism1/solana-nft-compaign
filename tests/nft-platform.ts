@@ -143,7 +143,6 @@ describe("nft-platform", () => {
         globalState: globalStatePDA,
         userNfts,
         payer: admin.publicKey,
-        mint,
         systemProgram: SystemProgram.programId,
       })
       .signers([])
