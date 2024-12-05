@@ -12,19 +12,16 @@ describe("nft-platform", () => {
 
   const program = anchor.workspace.NftPlatform as Program<NftPlatform>;
 
-  let globalState: PublicKey;
   //@ts-ignore
   let admin = provider.wallet as Wallet;;
-  let user = Keypair.generate();
-  let mint: PublicKey;
-  let userTokenAccount: PublicKey;
-  let adminTokenAccount: PublicKey;
+  const adminSolAccount = new PublicKey("HrFjzjeZHiQ3Goro6UxQL2gPiQrPAhmdkT7kUKZdZ3Fm");
+  const treasuryAccount = new PublicKey("ECBME3yBHmff6sKdcUJadjXn8UPvVT65Srzmkj1Wu45r");
 
   const MAX_NFTS = 8888;
-  const PURCHASE_START = 1733341737; // Current time in seconds
-  const PURCHASE_END = PURCHASE_START + 16 * 3600; // 1 hour later
-  const REVEAL_START = PURCHASE_END + 3600; // 1 hour after purchase ends
-  const REVEAL_END = REVEAL_START + 2* 3600; // 1 hour later
+  const PURCHASE_START = 1733426956; // Current time in seconds
+  const PURCHASE_END = PURCHASE_START + 1 * 3600; // 1 hour later
+  const REVEAL_START = PURCHASE_END + 600; // 10 minutes after purchase ends
+  const REVEAL_END = REVEAL_START + 2 * 3600; // 1 hour later
 
   it("Initializes the program", async () => {
     const [globalStatePDA] = await PublicKey.findProgramAddress(
@@ -42,6 +39,8 @@ describe("nft-platform", () => {
       .accounts({
         globalState: globalStatePDA,        
         admin: admin.PublicKey,
+        adminSolAccount: adminSolAccount,
+        treasuryAccount: treasuryAccount,
         systemProgram: SystemProgram.programId,
       })
       .signers([])
@@ -51,78 +50,74 @@ describe("nft-platform", () => {
     console.log("Global State:", state);
   });
 
-  // it("Purchases an NFT", async () => {
-  //   const [globalStatePDA] = await PublicKey.findProgramAddress(
-  //     [Buffer.from("NFT_PLATFORM")],
-  //     program.programId
-  //   );
+  it("Purchases an NFT", async () => {
+    const [globalStatePDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("NFT_PLATFORM")],
+      program.programId
+    );
 
+    const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
+    const mintKeypair: anchor.web3.Keypair = anchor.web3.Keypair.generate();
+    const mintAccount = mintKeypair.publicKey;
+    const associateTokenAccount = await anchor.utils.token.associatedAddress({
+      mint: mintAccount,
+      owner: admin.publicKey
+    })
 
-  //   const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+    const lamports: number = await program.provider.connection.getMinimumBalanceForRentExemption(MINT_SIZE);
+    const mint_tx = new anchor.web3.Transaction().add(
+      anchor.web3.SystemProgram.createAccount({
+        fromPubkey: admin.publicKey,
+        newAccountPubkey: mintAccount,
+        space: MINT_SIZE,
+        programId: TOKEN_PROGRAM_ID,
+        lamports,
+      }),
+      createInitializeMintInstruction(mintAccount, 0, admin.publicKey, admin.publicKey),
+      createAssociatedTokenAccountInstruction(admin.publicKey, associateTokenAccount, admin.publicKey, mintAccount),
+    );
 
-  //   const mintKeypair: anchor.web3.Keypair = anchor.web3.Keypair.generate();
-  //   const mintAccount = mintKeypair.publicKey;
-  //   const associateTokenAccount = await anchor.utils.token.associatedAddress({
-  //     mint: mintAccount,
-  //     owner: admin.publicKey
-  //   })
+    const res = await program.provider.sendAndConfirm(mint_tx, [mintKeypair]);
 
-  //   const lamports: number = await program.provider.connection.getMinimumBalanceForRentExemption(MINT_SIZE);
-  //   const mint_tx = new anchor.web3.Transaction().add(
-  //     anchor.web3.SystemProgram.createAccount({
-  //       fromPubkey: admin.publicKey,
-  //       newAccountPubkey: mintAccount,
-  //       space: MINT_SIZE,
-  //       programId: TOKEN_PROGRAM_ID,
-  //       lamports,
-  //     }),
-  //     createInitializeMintInstruction(mintAccount, 0, admin.publicKey, admin.publicKey),
-  //     createAssociatedTokenAccountInstruction(admin.publicKey, associateTokenAccount, admin.publicKey, mintAccount),
-  //   );
+    const [userNfts] = await PublicKey.findProgramAddress(
+      [mintAccount.toBuffer(), admin.publicKey.toBuffer()],
+      program.programId
+    );
 
-  //   const res = await program.provider.sendAndConfirm(mint_tx, [mintKeypair]);
-  //   const vaultAccount = new PublicKey("AmQ1f82eQVJeAy8fQ8UzcYQQ79nTvTy5FssvMfSmBzP")
-  //   const tokenAccount = new PublicKey("CWjKYqg7yucQURrCsMrdK3MpJm2H3YZAiBqY45BkB8vD");
+    const getMetadata = async (data) => {
+      const seed = await PublicKey.findProgramAddress(
+        data,
+        TOKEN_METADATA_PROGRAM_ID
+      );
+      return seed[0]
+    }
 
-  //   const [userNfts] = await PublicKey.findProgramAddress(
-  //     [mintAccount.toBuffer(), admin.publicKey.toBuffer()],
-  //     program.programId
-  //   );
+    const metadataAddress = await getMetadata([Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintAccount.toBuffer()])
+    await program.methods
+      .purchase()
+      .accounts({
+        globalState: globalStatePDA,
+        userNfts,
+        payer: admin.publicKey,
+        mintAccount: mintAccount,
+        associatedTokenAccount: associateTokenAccount,
+        adminSolAccount,
+        treasuryAccount,
+        metadataAccount: metadataAddress,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
+        rent: anchor.web3.SYSVAR_RENT_PUBKEY
+      })
+      .signers([])
+      .rpc();
 
-  //   const getMetadata = async (data) => {
-  //     const seed = await PublicKey.findProgramAddress(
-  //       data,
-  //       TOKEN_METADATA_PROGRAM_ID
-  //     );
-  //     return seed[0]
-  //   }
-
-  //   const metadataAddress = await getMetadata([Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintAccount.toBuffer()])
-  //   await program.methods
-  //     .purchase()
-  //     .accounts({
-  //       globalState: globalStatePDA,
-  //       userNfts,
-  //       payer: admin.publicKey,
-  //       mintAccount: mintAccount,
-  //       associatedTokenAccount: associateTokenAccount,
-  //       payerTokenAccount: tokenAccount,
-  //       adminTokenAccount: vaultAccount,
-  //       metadataAccount: metadataAddress,
-  //       tokenProgram: TOKEN_PROGRAM_ID,
-  //       tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
-  //       systemProgram: SystemProgram.programId,
-  //       rent: anchor.web3.SYSVAR_RENT_PUBKEY
-  //     })
-  //     .signers([])
-  //     .rpc();
-
-  //   const userState = await program.account.userNfTs.all();
-  //   console.log("User State:", userState);
-  //   const state = await program.account.globalState.all();
-  //   console.log("Global State:", state);
-  // });
+    const userState = await program.account.userNfTs.all();
+    console.log("User State:", userState);
+    const state = await program.account.globalState.all();
+    console.log("Global State:", state);
+  });
 
   // it("Reveals NFTs", async () => {
   //   const [globalStatePDA] = await PublicKey.findProgramAddress(

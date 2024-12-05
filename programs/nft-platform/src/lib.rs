@@ -1,19 +1,23 @@
 use anchor_lang::prelude::*;
-use anchor_spl::metadata::{self, Metadata, MetadataAccount, CreateMetadataAccountsV3};
+use anchor_spl::metadata::{self, Metadata, CreateMetadataAccountsV3};
 use mpl_token_metadata::types::DataV2;
 
 use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{self, Token, TokenAccount, Transfer, Mint, MintTo},
+    token::{self, Token, MintTo},
 };
 
+use solana_program::{
+    program::invoke,
+    system_instruction,
+    account_info::AccountInfo,
+};
 
 pub mod constant;
 pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("7r9WvA14doCbYHWKiSpyJHhN3eGn553A5CXdQhdecchP");
+declare_id!("EagfLcPwqgVjgHu6ePBXkrh3Dejea6hsZxJ4wb4cDffR");
 
 #[program]
 pub mod nft_platform {
@@ -35,6 +39,7 @@ pub mod nft_platform {
         );
 
         global_state.total_nfts_minted = 0;
+        global_state.total_raised = 0;
         global_state.max_nfts = max_nfts;
         global_state.purchase_start = purchase_start;
         global_state.purchase_end = purchase_end;
@@ -42,6 +47,8 @@ pub mod nft_platform {
         global_state.reveal_end = reveal_end;
         global_state.used_numbers = Vec::new();
         global_state.admin = ctx.accounts.admin.key();
+        global_state.admin_sol_account = ctx.accounts.admin_sol_account.key();
+        global_state.treasury_account = ctx.accounts.treasury_account.key();
 
         Ok(())
     }
@@ -77,44 +84,39 @@ pub mod nft_platform {
             current_time >= global_state.purchase_start && current_time <= global_state.purchase_end,
             ErrorCode::NotInPurchasePeriod
         );
+
+        require!(
+            ctx.accounts.admin_sol_account.key() == global_state.admin_sol_account,
+            ErrorCode::InvalidAdminSolAccount
+        );
+        require!(
+            ctx.accounts.treasury_account.key() == global_state.treasury_account,
+            ErrorCode::InvalidTreasuryAccount
+        );
     
         require!(
             global_state.total_nfts_minted < global_state.max_nfts,
             ErrorCode::NftLimitReached
         );
-
-        let user_balance = ctx.accounts.payer_token_account.amount;
-        if user_balance < NFT_PRICE {
-            return Err(ErrorCode::InsufficientFunds.into());
-        }
     
+        // Ensure the payer has enough SOL
+        let payer_balance = ctx.accounts.payer.to_account_info().lamports();
+        require!(payer_balance >= NFT_PRICE, ErrorCode::InsufficientFunds);
+    
+        // Calculate the split amounts
         let amount_to_address_one = NFT_PRICE * 75 / 100;
         let amount_to_address_two = NFT_PRICE - amount_to_address_one;
-
-        // Transfer SPL tokens from the payer to the admin
-        let cpi_accounts_one = Transfer {
-            from: ctx.accounts.payer_token_account.to_account_info(),
-            to: ctx.accounts.admin_token_account.to_account_info(),
-            authority: ctx.accounts.payer.to_account_info(),
-        };
-        let cpi_program_one = ctx.accounts.token_program.to_account_info();
-
-        token::transfer(
-            CpiContext::new(cpi_program_one, cpi_accounts_one),
-            amount_to_address_two,
+    
+        transfer_lamports(
+            ctx.accounts.payer.to_account_info(),
+            ctx.accounts.admin_sol_account.to_account_info(),
+            amount_to_address_one,
         )?;
 
-        let cpi_accounts_two = Transfer {
-            from: ctx.accounts.payer_token_account.to_account_info(),
-            to: ctx.accounts.admin_token_account.to_account_info(),
-            authority: ctx.accounts.payer.to_account_info(),
-        };
-
-        let cpi_program_two = ctx.accounts.token_program.to_account_info();
-
-        token::transfer(
-            CpiContext::new(cpi_program_two, cpi_accounts_two),
-            amount_to_address_one,
+        transfer_lamports(
+            ctx.accounts.payer.to_account_info(),
+            ctx.accounts.treasury_account.to_account_info(),
+            amount_to_address_two,
         )?;
 
         // Mint NFT to the user's token account
@@ -128,6 +130,8 @@ pub mod nft_platform {
             CpiContext::new(cpi_program, cpi_accounts),
             1, // Mint 1 NFT
         )?;
+    
+        // Create Metadata for the NFT
         metadata::create_metadata_accounts_v3(
             CpiContext::new(
                 ctx.accounts.token_metadata_program.to_account_info(),
@@ -143,8 +147,8 @@ pub mod nft_platform {
             ),
             DataV2 {
                 name: "NFTOne".to_string(),
-                symbol: "NO".to_string(),
-                uri: "https://avatars.githubusercontent.com/u/65070737?v=4".to_string(),
+                symbol: "ASHU".to_string(),
+                uri: "https://violet-rear-raven-459.mypinata.cloud/ipfs/QmNeT3HfrYyc1q3yzJG9RFwXKkaZKj1c86RhW8WVq7VDbu".to_string(),
                 seller_fee_basis_points: 0,
                 creators: None,
                 collection: None,
@@ -155,14 +159,16 @@ pub mod nft_platform {
             None,
         )?;
     
-        user_nfts.owner = *ctx.accounts.payer.key;        
-        user_nfts.mint_key = ctx.accounts.mint_account.key();        
+        user_nfts.owner = *ctx.accounts.payer.key;
+        user_nfts.mint_key = ctx.accounts.mint_account.key();
         user_nfts.revealed_number = 0;
-        
+    
         global_state.total_nfts_minted += 1;
+        global_state.total_raised += NFT_PRICE;
     
         Ok(())
-    }    
+    }
+       
 
     pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
         let user_nfts = &mut ctx.accounts.user_nfts;
@@ -198,12 +204,20 @@ pub mod nft_platform {
 
 }
 
+fn transfer_lamports<'a>(from: AccountInfo<'a>, to: AccountInfo<'a>, amount: u64) -> Result<()> {
+    let ix = system_instruction::transfer(&from.key(), &to.key(), amount);
+    invoke(&ix, &[from, to])?;
+
+    Ok(())
+}
+
 
 #[account]
 #[derive(InitSpace)]
 pub struct GlobalState {
     pub total_nfts_minted: u64,
     pub max_nfts: u64,
+    pub total_raised: u64,
     pub purchase_start: i64,
     pub purchase_end: i64,
     pub reveal_start: i64,
@@ -211,7 +225,8 @@ pub struct GlobalState {
     #[max_len(200)]
     pub used_numbers: Vec<u16>,
     pub admin: Pubkey,
-
+    pub admin_sol_account: Pubkey,
+    pub treasury_account: Pubkey,
 }
 
 #[account]
@@ -234,6 +249,8 @@ pub struct Initialize<'info> {
         space = 8 + GlobalState::INIT_SPACE,
     )]
     pub global_state: Account<'info, GlobalState>,
+    pub admin_sol_account: UncheckedAccount<'info>,      
+    pub treasury_account: UncheckedAccount<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -262,11 +279,11 @@ pub struct Purchase<'info> {
     pub user_nfts: Account<'info, UserNFTs>,
     #[account(mut)]
     pub associated_token_account: UncheckedAccount<'info>,
-    #[account(mut)]
-    pub payer_token_account: Account<'info, TokenAccount>, 
-    #[account(mut)]
-    pub admin_token_account: Account<'info, TokenAccount>,
     pub token_metadata_program: Program<'info, Metadata>,
+    #[account(mut)]
+    pub admin_sol_account: UncheckedAccount<'info>,  
+    #[account(mut)]    
+    pub treasury_account: UncheckedAccount<'info>,
     #[account(mut)]
     pub metadata_account: UncheckedAccount<'info>,
     pub token_program: Program<'info, Token>,    

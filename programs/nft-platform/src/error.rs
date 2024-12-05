@@ -24,4 +24,8 @@ pub enum ErrorCode {
     NoAvailableNumbers,
     #[msg("Reveal period exceeded")]
     RevealPeriodExceed,
+    #[msg("The provided admin SOL account is invalid.")]
+    InvalidAdminSolAccount,    
+    #[msg("The provided treasury account is invalid.")]
+    InvalidTreasuryAccount,
 }
