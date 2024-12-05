@@ -20,37 +20,36 @@ describe("nft-platform", () => {
   let userTokenAccount: PublicKey;
   let adminTokenAccount: PublicKey;
 
-  const MAX_NFTS = 100;
-  const NFT_PRICE_LAMPORTS = 1_000_000; // Price in lamports
-  const PURCHASE_START = Math.floor(Date.now() / 1000); // Current time in seconds
-  const PURCHASE_END = PURCHASE_START + 3600; // 1 hour later
+  const MAX_NFTS = 8888;
+  const PURCHASE_START = 1733341737; // Current time in seconds
+  const PURCHASE_END = PURCHASE_START + 16 * 3600; // 1 hour later
   const REVEAL_START = PURCHASE_END + 3600; // 1 hour after purchase ends
-  const REVEAL_END = REVEAL_START + 3600; // 1 hour later
+  const REVEAL_END = REVEAL_START + 2* 3600; // 1 hour later
 
-  // it("Initializes the program", async () => {
-  //   const [globalStatePDA] = await PublicKey.findProgramAddress(
-  //     [Buffer.from("NFT_PLATFORM")],
-  //     program.programId
-  //   );
-  //   await program.methods
-  //     .initialize(
-  //       new anchor.BN(MAX_NFTS),
-  //       new anchor.BN(PURCHASE_START),
-  //       new anchor.BN(PURCHASE_END),
-  //       new anchor.BN(REVEAL_START),
-  //       new anchor.BN(REVEAL_END)
-  //     )
-  //     .accounts({
-  //       globalState: globalStatePDA,        
-  //       admin: admin.PublicKey,
-  //       systemProgram: SystemProgram.programId,
-  //     })
-  //     .signers([])
-  //     .rpc();
+  it("Initializes the program", async () => {
+    const [globalStatePDA] = await PublicKey.findProgramAddress(
+      [Buffer.from("NFT_PLATFORM")],
+      program.programId
+    );
+    await program.methods
+      .initialize(
+        new anchor.BN(MAX_NFTS),
+        new anchor.BN(PURCHASE_START),
+        new anchor.BN(PURCHASE_END),
+        new anchor.BN(REVEAL_START),
+        new anchor.BN(REVEAL_END)
+      )
+      .accounts({
+        globalState: globalStatePDA,        
+        admin: admin.PublicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .signers([])
+      .rpc();
 
-  //   const state = await program.account.globalState.all();
-  //   console.log("Global State:", state);
-  // });
+    const state = await program.account.globalState.all();
+    console.log("Global State:", state);
+  });
 
   // it("Purchases an NFT", async () => {
   //   const [globalStatePDA] = await PublicKey.findProgramAddress(
@@ -125,35 +124,35 @@ describe("nft-platform", () => {
   //   console.log("Global State:", state);
   // });
 
-  it("Reveals NFTs", async () => {
-    const [globalStatePDA] = await PublicKey.findProgramAddress(
-      [Buffer.from("NFT_PLATFORM")],
-      program.programId
-    );
+  // it("Reveals NFTs", async () => {
+  //   const [globalStatePDA] = await PublicKey.findProgramAddress(
+  //     [Buffer.from("NFT_PLATFORM")],
+  //     program.programId
+  //   );
 
-    const mint = new PublicKey("FaRroQmDgmLZxRh8gLYCtsDRCBF4QsqzmvEr914h7Ey3")
-    const [userNfts] = await PublicKey.findProgramAddress(
-      [mint.toBuffer(), admin.publicKey.toBuffer()],
-      program.programId
-    );
+  //   const mint = new PublicKey("FaRroQmDgmLZxRh8gLYCtsDRCBF4QsqzmvEr914h7Ey3")
+  //   const [userNfts] = await PublicKey.findProgramAddress(
+  //     [mint.toBuffer(), admin.publicKey.toBuffer()],
+  //     program.programId
+  //   );
 
-    await program.methods
-      .reveal(mint)
-      .accounts({
-        globalState: globalStatePDA,
-        userNfts,
-        payer: admin.publicKey,
-        systemProgram: SystemProgram.programId,
-      })
-      .signers([])
-      .rpc()
+  //   await program.methods
+  //     .reveal(mint)
+  //     .accounts({
+  //       globalState: globalStatePDA,
+  //       userNfts,
+  //       payer: admin.publicKey,
+  //       systemProgram: SystemProgram.programId,
+  //     })
+  //     .signers([])
+  //     .rpc()
 
-    const userState = await program.account.userNfTs.all();
-    console.log("Updated User State after Reveal:", userState);
+  //   const userState = await program.account.userNfTs.all();
+  //   console.log("Updated User State after Reveal:", userState);
 
-    const globalState = await program.account.globalState.all();
-    console.log("Updated Global State after Reveal:", globalState);
+  //   const globalState = await program.account.globalState.all();
+  //   console.log("Updated Global State after Reveal:", globalState);
 
-  });
+  // });
 
 });

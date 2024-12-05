@@ -13,7 +13,7 @@ pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("AiUAGsCiAvGr2Zodt3K52qdYVLiRSBHWXqMrv9nvndB1");
+declare_id!("7r9WvA14doCbYHWKiSpyJHhN3eGn553A5CXdQhdecchP");
 
 #[program]
 pub mod nft_platform {
@@ -73,10 +73,10 @@ pub mod nft_platform {
         let user_nfts = &mut ctx.accounts.user_nfts;
     
         let current_time = Clock::get()?.unix_timestamp;
-        // require!(
-        //     current_time >= global_state.purchase_start && current_time <= global_state.purchase_end,
-        //     ErrorCode::NotInPurchasePeriod
-        // );
+        require!(
+            current_time >= global_state.purchase_start && current_time <= global_state.purchase_end,
+            ErrorCode::NotInPurchasePeriod
+        );
     
         require!(
             global_state.total_nfts_minted < global_state.max_nfts,
@@ -169,10 +169,10 @@ pub mod nft_platform {
         let global_state = &mut ctx.accounts.global_state;
 
         let current_time = Clock::get()?.unix_timestamp;
-        // require!(
-        //     current_time >= global_state.reveal_start && current_time <= global_state.reveal_end,
-        //     ErrorCode::NotInRevealPeriod
-        // );
+        require!(
+            current_time >= global_state.reveal_start && current_time <= global_state.reveal_end,
+            ErrorCode::NotInRevealPeriod
+        );
 
         if user_nfts.mint_key != mint {
             return Err(ErrorCode::NftNotFound.into());
@@ -181,7 +181,7 @@ pub mod nft_platform {
             return Err(ErrorCode::NftAlreadyRevealed.into());
         }
 
-        let available_numbers: Vec<u8> = (1..=100)
+        let available_numbers: Vec<u16> = (1..=8888)
             .filter(|n| !global_state.used_numbers.contains(n))
             .collect();
         if available_numbers.is_empty() {
@@ -209,7 +209,7 @@ pub struct GlobalState {
     pub reveal_start: i64,
     pub reveal_end: i64,
     #[max_len(200)]
-    pub used_numbers: Vec<u8>,
+    pub used_numbers: Vec<u16>,
     pub admin: Pubkey,
 
 }
@@ -219,7 +219,7 @@ pub struct GlobalState {
 pub struct UserNFTs  {
     pub owner: Pubkey,           
     pub mint_key: Pubkey,              
-    pub revealed_number: u8,   
+    pub revealed_number: u16,   
 }
 
 #[derive(Accounts)]
