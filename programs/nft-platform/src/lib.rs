@@ -17,7 +17,7 @@ pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("EagfLcPwqgVjgHu6ePBXkrh3Dejea6hsZxJ4wb4cDffR");
+declare_id!("Gf2ypX4NqegtmoHknD7onuqzECMo1JfUHVb1CzTSZa6j");
 
 #[program]
 pub mod nft_platform {
@@ -40,6 +40,7 @@ pub mod nft_platform {
 
         global_state.total_nfts_minted = 0;
         global_state.total_raised = 0;
+        global_state.total_revealed = 0;
         global_state.max_nfts = max_nfts;
         global_state.purchase_start = purchase_start;
         global_state.purchase_end = purchase_end;
@@ -198,6 +199,7 @@ pub mod nft_platform {
         let random_number = available_numbers[0];
         user_nfts.revealed_number = random_number;
         global_state.used_numbers.push(random_number);
+        global_state.total_revealed += 1;
 
         Ok(())
     }
@@ -218,6 +220,7 @@ pub struct GlobalState {
     pub total_nfts_minted: u64,
     pub max_nfts: u64,
     pub total_raised: u64,
+    pub total_revealed: i64,
     pub purchase_start: i64,
     pub purchase_end: i64,
     pub reveal_start: i64,
