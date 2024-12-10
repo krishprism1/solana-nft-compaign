@@ -3,6 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { NftPlatform } from "../target/types/nft_platform";
 import { PublicKey, SystemProgram, Keypair } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, createMint, createAccount, mintTo, getAssociatedTokenAddress, createInitializeMintInstruction, createAssociatedTokenAccountInstruction, MINT_SIZE } from "@solana/spl-token";
+// import { PythSolanaReceiver } from "@pythnetwork/pyth-solana-receiver";
 
 describe("nft-platform", () => {
   // Configure the client to use the local cluster.
@@ -11,17 +12,20 @@ describe("nft-platform", () => {
   const connection = provider.connection;
 
   const program = anchor.workspace.NftPlatform as Program<NftPlatform>;
-
   //@ts-ignore
-  let admin = provider.wallet as Wallet;;
+  let admin = provider.wallet as Wallet;
+  //@ts-ignore
+  // const pythSolanaReceiver = new PythSolanaReceiver({ connection, admin });
+
   const adminSolAccount = new PublicKey("HrFjzjeZHiQ3Goro6UxQL2gPiQrPAhmdkT7kUKZdZ3Fm");
   const treasuryAccount = new PublicKey("ECBME3yBHmff6sKdcUJadjXn8UPvVT65Srzmkj1Wu45r");
 
+
   const MAX_NFTS = 8888;
-  const PURCHASE_START = 1733605000; // Current time in seconds
-  const PURCHASE_END = PURCHASE_START + 1 * 3600; // 1 hour later
-  const REVEAL_START = PURCHASE_END + 600; // 10 minutes after purchase ends
-  const REVEAL_END = REVEAL_START + 2 * 3600; // 1 hour later
+  const PURCHASE_START = 1733824107; // Current time in seconds
+  const PURCHASE_END = PURCHASE_START + 600; // 1 hour later
+  const REVEAL_START = PURCHASE_END 
+  const REVEAL_END = REVEAL_START + 600; // 1 hour later
 
   it("Initializes the program", async () => {
     const [globalStatePDA] = await PublicKey.findProgramAddress(
@@ -37,7 +41,7 @@ describe("nft-platform", () => {
         new anchor.BN(REVEAL_END)
       )
       .accounts({
-        globalState: globalStatePDA,        
+        globalState: globalStatePDA,
         admin: admin.PublicKey,
         adminSolAccount: adminSolAccount,
         treasuryAccount: treasuryAccount,
@@ -94,6 +98,12 @@ describe("nft-platform", () => {
   //   }
 
   //   const metadataAddress = await getMetadata([Buffer.from("metadata"), TOKEN_METADATA_PROGRAM_ID.toBuffer(), mintAccount.toBuffer()])
+
+  //   const SOL_PRICE_FEED_ID = "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d"
+  //   const solUsdPriceFeedAccount = pythSolanaReceiver
+  //     .getPriceFeedAccountAddress(0, SOL_PRICE_FEED_ID)
+  //     .toBase58();
+
   //   await program.methods
   //     .purchase()
   //     .accounts({
@@ -105,6 +115,7 @@ describe("nft-platform", () => {
   //       adminSolAccount,
   //       treasuryAccount,
   //       metadataAccount: metadataAddress,
+  //       priceUpdate: solUsdPriceFeedAccount,
   //       tokenProgram: TOKEN_PROGRAM_ID,
   //       tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
   //       systemProgram: SystemProgram.programId,

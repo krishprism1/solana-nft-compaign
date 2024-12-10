@@ -12,12 +12,15 @@ use solana_program::{
     account_info::AccountInfo,
 };
 
+
+// use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
+
 pub mod constant;
 pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("Gf2ypX4NqegtmoHknD7onuqzECMo1JfUHVb1CzTSZa6j");
+declare_id!("7AukMC2QEnpE3zp54865j9GM7EcqACStJNikWMBmJv8o");
 
 #[program]
 pub mod nft_platform {
@@ -46,7 +49,6 @@ pub mod nft_platform {
         global_state.purchase_end = purchase_end;
         global_state.reveal_start = reveal_start;
         global_state.reveal_end = reveal_end;
-        global_state.used_numbers = Vec::new();
         global_state.admin = ctx.accounts.admin.key();
         global_state.admin_sol_account = ctx.accounts.admin_sol_account.key();
         global_state.treasury_account = ctx.accounts.treasury_account.key();
@@ -99,7 +101,22 @@ pub mod nft_platform {
             global_state.total_nfts_minted < global_state.max_nfts,
             ErrorCode::NftLimitReached
         );
-    
+
+        // //*******
+        // let price_update = &mut ctx.accounts.price_update;
+        // // get_price_no_older_than will fail if the price update is more than 30 seconds old
+        // let maximum_age: u64 = 30;
+        // // get_price_no_older_than will fail if the price update is for a different price feed.
+        // // This string is the id of the SOL/USD feed. See https://pyth.network/developers/price-feed-ids for all available IDs.
+        // let feed_id: [u8; 32] = get_feed_id_from_hex("0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d")?;
+        // let price = price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
+        // // Sample output:
+        // // The price is (7160106530699 ± 5129162301) * 10^-8
+        // msg!("SOL/USD price is ({} ± {}) * 10^{}", price.price, price.conf, price.exponent);
+     
+
+        //******
+        
         // Ensure the payer has enough SOL
         let payer_balance = ctx.accounts.payer.to_account_info().lamports();
         require!(payer_balance >= NFT_PRICE, ErrorCode::InsufficientFunds);
@@ -188,17 +205,7 @@ pub mod nft_platform {
             return Err(ErrorCode::NftAlreadyRevealed.into());
         }
 
-        let available_numbers: Vec<u16> = (1..=8888)
-            .filter(|n| !global_state.used_numbers.contains(n))
-            .collect();
-        if available_numbers.is_empty() {
-            return Err(error!(ErrorCode::NoAvailableNumbers));
-        }
-
-        // Simulating randomness with deterministic behavior for now
-        let random_number = available_numbers[0];
-        user_nfts.revealed_number = random_number;
-        global_state.used_numbers.push(random_number);
+        user_nfts.revealed_number = global_state.total_revealed + 1;
         global_state.total_revealed += 1;
 
         Ok(())
@@ -225,8 +232,6 @@ pub struct GlobalState {
     pub purchase_end: i64,
     pub reveal_start: i64,
     pub reveal_end: i64,
-    #[max_len(200)]
-    pub used_numbers: Vec<u16>,
     pub admin: Pubkey,
     pub admin_sol_account: Pubkey,
     pub treasury_account: Pubkey,
@@ -237,7 +242,7 @@ pub struct GlobalState {
 pub struct UserNFTs  {
     pub owner: Pubkey,           
     pub mint_key: Pubkey,              
-    pub revealed_number: u16,   
+    pub revealed_number: i64,   
 }
 
 #[derive(Accounts)]
@@ -289,6 +294,7 @@ pub struct Purchase<'info> {
     pub treasury_account: UncheckedAccount<'info>,
     #[account(mut)]
     pub metadata_account: UncheckedAccount<'info>,
+    // pub price_update: Account<'info, PriceUpdateV2>,
     pub token_program: Program<'info, Token>,    
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,

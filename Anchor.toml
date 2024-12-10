@@ -5,7 +5,7 @@ seeds = false
 skip-lint = false
 
 [programs.devnet]
-nft_platform = "Gf2ypX4NqegtmoHknD7onuqzECMo1JfUHVb1CzTSZa6j"
+nft_platform = "7AukMC2QEnpE3zp54865j9GM7EcqACStJNikWMBmJv8o"
 
 [registry]
 url = "https://api.apr.dev"
