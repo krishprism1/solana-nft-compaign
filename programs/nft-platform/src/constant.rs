@@ -1,2 +1,2 @@
-pub const NFT_PRICE: u64 = 2_371_790_000; // SOL;
+pub const PRICE: u64 = 5550000000000000; // USDC;
 pub const PREFIX: &[u8] =  b"NFT_PLATFORM";

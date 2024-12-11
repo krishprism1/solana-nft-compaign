@@ -11,16 +11,15 @@ use solana_program::{
     system_instruction,
     account_info::AccountInfo,
 };
-
-
-// use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
+use std::convert::TryInto;
+use pyth_solana_receiver_sdk::price_update::{get_feed_id_from_hex, PriceUpdateV2};
 
 pub mod constant;
 pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("7AukMC2QEnpE3zp54865j9GM7EcqACStJNikWMBmJv8o");
+declare_id!("GupsVjvKT1pv3KQ2cfgv2P2YB9SHeLLhT4HuvZC46Ajo");
 
 #[program]
 pub mod nft_platform {
@@ -102,21 +101,20 @@ pub mod nft_platform {
             ErrorCode::NftLimitReached
         );
 
-        // //*******
-        // let price_update = &mut ctx.accounts.price_update;
-        // // get_price_no_older_than will fail if the price update is more than 30 seconds old
-        // let maximum_age: u64 = 30;
-        // // get_price_no_older_than will fail if the price update is for a different price feed.
-        // // This string is the id of the SOL/USD feed. See https://pyth.network/developers/price-feed-ids for all available IDs.
-        // let feed_id: [u8; 32] = get_feed_id_from_hex("0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d")?;
-        // let price = price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
-        // // Sample output:
-        // // The price is (7160106530699 ± 5129162301) * 10^-8
-        // msg!("SOL/USD price is ({} ± {}) * 10^{}", price.price, price.conf, price.exponent);
+        let price_update = &mut ctx.accounts.price_update;
+        // get_price_no_older_than will fail if the price update is more than 60 seconds old
+        let maximum_age: u64 = 60;
+        // This string is the id of the SOL/USD feed. See https://pyth.network/developers/price-feed-ids for all available IDs.
+        let feed_id: [u8; 32] = get_feed_id_from_hex("0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d")?;
+        let price = price_update.get_price_no_older_than(&Clock::get()?, maximum_age, &feed_id)?;
+        // Sample output:
+        msg!("SOL/USD price is ({} ± {}) * 10^{}", price.price, price.conf, price.exponent);
      
-
-        //******
-        
+        // Safely convert price.price (i64) to u64
+        let price_value: u64 = price.price.try_into().expect("Negative price value");
+        msg!("SOL/USD is {}", price_value);
+        let NFT_PRICE = (PRICE / price_value) * 10_u64.pow(4) ;
+        msg!("NFT price is {}", NFT_PRICE);
         // Ensure the payer has enough SOL
         let payer_balance = ctx.accounts.payer.to_account_info().lamports();
         require!(payer_balance >= NFT_PRICE, ErrorCode::InsufficientFunds);
@@ -205,6 +203,8 @@ pub mod nft_platform {
             return Err(ErrorCode::NftAlreadyRevealed.into());
         }
 
+        msg!("NFT mint is {}", mint);
+        msg!("Reveal number is {}", global_state.total_revealed + 1);
         user_nfts.revealed_number = global_state.total_revealed + 1;
         global_state.total_revealed += 1;
 
@@ -294,7 +294,7 @@ pub struct Purchase<'info> {
     pub treasury_account: UncheckedAccount<'info>,
     #[account(mut)]
     pub metadata_account: UncheckedAccount<'info>,
-    // pub price_update: Account<'info, PriceUpdateV2>,
+    pub price_update: Account<'info, PriceUpdateV2>,
     pub token_program: Program<'info, Token>,    
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
