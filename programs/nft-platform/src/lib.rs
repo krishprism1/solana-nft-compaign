@@ -55,6 +55,14 @@ pub mod nft_platform {
         Ok(())
     }
 
+    pub fn initialize_random_state(ctx: Context<InitializeUsedNumber>, index: u16) -> Result<()> {
+        let state = &mut ctx.accounts.state;
+        state.used_numbers = Vec::new();
+        state.index = index;
+        state.start = index;
+        Ok(())
+    }
+
     pub fn set_periods(
         ctx: Context<SetPeriods>,
         purchase_start: i64,
@@ -185,7 +193,6 @@ pub mod nft_platform {
         Ok(())
     }
        
-
     pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
         let user_nfts = &mut ctx.accounts.user_nfts;
         let global_state = &mut ctx.accounts.global_state;
@@ -202,10 +209,29 @@ pub mod nft_platform {
         if user_nfts.revealed_number != 0 {
             return Err(ErrorCode::NftAlreadyRevealed.into());
         }
+        let timestamp = Clock::get()?.unix_timestamp;
+        let hash = anchor_lang::solana_program::keccak::hash(format!("{}", timestamp).as_bytes());
+        let random_number = u16::from_le_bytes(hash.as_ref()[..2].try_into().unwrap()) % 1111 as u16 + ctx.accounts.state.start as u16;
 
-        msg!("NFT mint is {}", mint);
-        msg!("Reveal number is {}", global_state.total_revealed + 1);
-        user_nfts.revealed_number = global_state.total_revealed + 1;
+        if random_number != 0 && !ctx.accounts.state.used_numbers.contains(&random_number) {
+            ctx.accounts.state.used_numbers.push(random_number);
+            user_nfts.revealed_number = random_number;
+            msg!("NFT mint is {}", mint);
+            msg!("Reveal number is {}", random_number);
+        } else {
+            let end = 1111 + ctx.accounts.state.start - 1;
+            for i in ctx.accounts.state.index..=end {
+                if !ctx.accounts.state.used_numbers.contains(&(i as u16)) {
+                    ctx.accounts.state.used_numbers.push(i as u16);
+                    ctx.accounts.state.index = i + 1;
+                    user_nfts.revealed_number = i;
+                    msg!("NFT mint is {}", mint);
+                    msg!("Reveal number is {}", i);
+                    break;
+                }
+            }
+        }
+        
         global_state.total_revealed += 1;
 
         Ok(())
@@ -242,7 +268,31 @@ pub struct GlobalState {
 pub struct UserNFTs  {
     pub owner: Pubkey,           
     pub mint_key: Pubkey,              
-    pub revealed_number: i64,   
+    pub revealed_number: u16,   
+}
+
+#[account]
+pub struct UsedRandomNumber {
+    pub used_numbers: Vec<u16>,
+    pub index: u16,
+    pub start: u16
+}
+
+#[derive(Accounts)]
+#[instruction(index: u16)]
+pub struct InitializeUsedNumber<'info> {
+    #[account(
+        init,
+        seeds = [b"state", index.to_le_bytes().as_ref()],
+        bump,
+        payer = signer,
+        space = 8 + 4 + (2 * 1111)
+    )]
+    pub state: Account<'info, UsedRandomNumber>,
+
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    pub system_program: Program<'info, System>,
 }
 
 #[derive(Accounts)]
@@ -306,6 +356,8 @@ pub struct Reveal<'info> {
     pub user_nfts: Account<'info, UserNFTs>,  
     #[account(mut)]
     pub global_state: Account<'info, GlobalState>,
+    #[account(mut)]
+    pub state: Account<'info, UsedRandomNumber>,
     pub payer: Signer<'info>,  
     pub system_program: Program<'info, System>
 }
