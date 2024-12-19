@@ -19,7 +19,7 @@ pub mod error;
 use crate::error::ErrorCode;
 use crate::constant::*;
 
-declare_id!("GupsVjvKT1pv3KQ2cfgv2P2YB9SHeLLhT4HuvZC46Ajo");
+declare_id!("Gsw95kuqYGs7Q95b99DmpWS56dFTyvZKVDcpiu3co1gX");
 
 #[program]
 pub mod nft_platform {
@@ -196,6 +196,7 @@ pub mod nft_platform {
     pub fn reveal(ctx: Context<Reveal>, mint: Pubkey) -> Result<()> {
         let user_nfts = &mut ctx.accounts.user_nfts;
         let global_state = &mut ctx.accounts.global_state;
+        let all_used_numbers = ctx.accounts.state.used_numbers.clone();
 
         let current_time = Clock::get()?.unix_timestamp;
         require!(
@@ -209,11 +210,16 @@ pub mod nft_platform {
         if user_nfts.revealed_number != 0 {
             return Err(ErrorCode::NftAlreadyRevealed.into());
         }
+
+        if ctx.accounts.state.used_numbers.len() >= 1111 {
+            return Err(ErrorCode::NoAvailableNumbers.into());
+        }
+
         let timestamp = Clock::get()?.unix_timestamp;
         let hash = anchor_lang::solana_program::keccak::hash(format!("{}", timestamp).as_bytes());
         let random_number = u16::from_le_bytes(hash.as_ref()[..2].try_into().unwrap()) % 1111 as u16 + ctx.accounts.state.start as u16;
 
-        if random_number != 0 && !ctx.accounts.state.used_numbers.contains(&random_number) {
+        if random_number != 0 && !all_used_numbers.contains(&random_number) {
             ctx.accounts.state.used_numbers.push(random_number);
             user_nfts.revealed_number = random_number;
             msg!("NFT mint is {}", mint);
@@ -221,7 +227,7 @@ pub mod nft_platform {
         } else {
             let end = 1111 + ctx.accounts.state.start - 1;
             for i in ctx.accounts.state.index..=end {
-                if !ctx.accounts.state.used_numbers.contains(&(i as u16)) {
+                if !all_used_numbers.contains(&(i as u16)) {
                     ctx.accounts.state.used_numbers.push(i as u16);
                     ctx.accounts.state.index = i + 1;
                     user_nfts.revealed_number = i;
@@ -283,10 +289,10 @@ pub struct UsedRandomNumber {
 pub struct InitializeUsedNumber<'info> {
     #[account(
         init,
-        seeds = [b"state", index.to_le_bytes().as_ref()],
+        seeds = [RANDOM_SEED, index.to_le_bytes().as_ref()],
         bump,
         payer = signer,
-        space = 8 + 4 + (2 * 1111)
+        space = 8 + 8 + 4 + (2 * 1111) + 4
     )]
     pub state: Account<'info, UsedRandomNumber>,
 
